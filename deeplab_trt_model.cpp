@@ -187,8 +187,8 @@ public:
         auto start = std::chrono::high_resolution_clock::now();
         // std::cout << "start to inference" << std::endl;
         context->enqueueV2(mBinding.data(), stream,nullptr);
-
-        // std::cout << "end of  inference" << std::endl;
+        cudaStreamSynchronize(stream); //then you can access output without copy again
+        std::cout << "end of  inference" << std::endl;
         auto end1 = std::chrono::high_resolution_clock::now();
         auto ms1 = std::chrono::duration_cast<std::chrono::microseconds>(end1 - start);
         std::cout << "推理: " << (ms1 / 1000.0).count() << "ms" << std::endl;
@@ -206,7 +206,6 @@ public:
         // below is not work
 
         /*
-        cudaStreamSynchronize(stream);
         float* y_host = (float *)GetBindingPtr("output");
 
         cv::Mat map = cv::Mat::zeros(612, 816, CV_8UC3);
@@ -224,6 +223,6 @@ public:
         cv::imwrite("_cv_trt.jpg", map);
         */
 
-       
+
     }
 };
