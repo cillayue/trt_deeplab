@@ -44,7 +44,7 @@ public:
                 safeCudaFreeHost(mBinding[i]);
             }
         }
-        cudaSteamDestroy(stream);
+        cudaStreamDestroy(stream);
 
     }
 
@@ -64,22 +64,15 @@ public:
     std::vector<std::string> mBindingName;
 
     int mNbInputBindings = 0;
-
     int mNbOutputBindings = 0;
 
     nvinfer1::IBuilder *builder;          
     nvinfer1::IRuntime *runtime;          // 有了runtime ,可以用它来反序列化（即加载）一个已优化的模型引擎
     nvinfer1::ICudaEngine *engine;        // 通过 Builder 类来生成推理引擎
     nvinfer1::IExecutionContext *context; // 执行engine中的网络，enqueue 方法将输入数据传递给引擎，并等待引擎完成计算以产生输出
-            
-   
-
-    // 为输入和输出创建空间，参考CUDA中的cudaMalloc 和 CUDA freed等范式
-    void *gpu_buffers[2]; // 待创建的空间  为指针数组 通常指的是在GPU内存中分配的缓冲区，用于存储深度学习模型的输入、输出以及中间数据。这些缓冲区对于高效地进行深度学习推理至关重要，因为它们允许数据在GPU上直接处理，避免了频繁的数据传输开销
     cudaStream_t stream; // 一个指向CUDA流（stream）的指针，它用于控制GPU上的异步执行顺序。CUDA流是一个执行序列，允许在GPU上并行地执行多个操作，同时保持这些操作之间的依赖关系
 
-
-
+    // 加载engine模型
     std::vector<uint8_t> loadModel(std::string &trtPath)
         {
             std::cout << "start to loadmodel " << std::endl; 
@@ -120,10 +113,8 @@ public:
                 const char* name = engine->getBindingName(i);
                 nvinfer1::DataType dtype = engine->getBindingDataType(i);
                 nvinfer1::Dims dims;
-                std::cout << "dtype" << std::endl; 
 
                 dims = engine->getBindingDimensions(i);
-                std::cout << "dims" << std::endl; 
  
                 // std::cout << "Dims (nbDims=" << dims.nbDims << "): ";
                 //     for (int i = 0; i < dims.nbDims; ++i) {
@@ -134,9 +125,8 @@ public:
 
 
                 int64_t total_size = volume(dims) * getElementSize(dtype);
-                // float total_size = volume(dims) * getElementSize(dtype);
-                std::cout << "total_size" << std::endl; 
-                std::cout << total_size << std::endl; 
+                // std::cout << "total_size" << std::endl; 
+                // std::cout << total_size << std::endl; 
                 mBindingSize[i] = total_size;
                 mBindingName[i] = name;
                 mBindingDims[i] = dims;
@@ -154,6 +144,8 @@ public:
                 }
             }
         }
+
+
     bool build(const std::vector<uint8_t>& trtFile, nvinfer1::ILogger &logger)
         {
             std::cout << "start to build " << std::endl; 
@@ -164,61 +156,74 @@ public:
             std::cout << "build success" << std::endl; 
             return true;
         }
+
+
     int GetBindingIndex(const std::string& tensor_name) const
         {
             return engine->getBindingIndex(tensor_name.c_str());
         }
     void CopyFromHostToDevice(const float* input, int size, int bindIndex, const cudaStream_t& stream)
         {
-            std::cout << "start CUDA_CHECK" << std::endl;
-            std::cout << "size:"<< size << std::endl;
             CUDA_CHECK(cudaMemcpyAsync(mBinding[bindIndex], input, size, cudaMemcpyHostToDevice, stream));//段错误 (核心已转储)
-            std::cout << "end CUDA_CHECK" << std::endl;
             cudaStreamSynchronize(stream);
 
         }
 
-    // void xInfer::CopyFromDeviceToHost(const float* output, int size, int bindIndex, const cudaStream_t& stream)
-    //     {
-    //         CUDA_CHECK(cudaMemcpyAsync(output, mBinding[bindIndex], size, cudaMemcpyDeviceToHost, stream));
-    //         CUDA_CHECK(cudaStreamSynchronize(stream));
-    //         //mLogger->log(Severity::kINFO, "API: CopyFromDeviceToHost will be deprecated soon, try to use GetBindingPtr");
-    //     }
+    void CopyFromDeviceToHost(std::vector<int>& output, int size, int bindIndex, const cudaStream_t& stream)
+        {
+            CUDA_CHECK(cudaMemcpyAsync(output.data(), mBinding[bindIndex], size, cudaMemcpyDeviceToHost, stream));
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+        }
 
     void* GetBindingPtr(const std::string& tensor_name) const
         {
             int idx = GetBindingIndex(tensor_name);
             return mBinding[idx];
         }
+        
     void inference( const float *input, int size,int bindIndex)
     {
         CopyFromHostToDevice(input, size, bindIndex, stream);
         auto start = std::chrono::high_resolution_clock::now();
-        std::cout << "start to inference" << std::endl;
+        // std::cout << "start to inference" << std::endl;
         context->enqueueV2(mBinding.data(), stream,nullptr);
-        std::cout << "end of  inference" << std::endl;
+
+        // std::cout << "end of  inference" << std::endl;
         auto end1 = std::chrono::high_resolution_clock::now();
         auto ms1 = std::chrono::duration_cast<std::chrono::microseconds>(end1 - start);
         std::cout << "推理: " << (ms1 / 1000.0).count() << "ms" << std::endl;
 
-        float* output = (float*)GetBindingPtr("output"); // 指针
-        std::cout << "get output "<< std::endl;
-
         std::vector<std::vector<int>> COLOR_MAP{
         {120, 120, 120}, {180, 120, 120}, {6, 230, 230},   {80, 50, 50}};
 
-        // cv::Mat map(612, 816, CV_8UC3);
-        // for (size_t i = 0; i < 612; i++) {
-        // for (size_t j = 0; j < 816; j++) {
-        //     int cls_id = output[i * 816 + j];
-        //     std::cout << "cls_id "<< cls_id << std::endl;
-        //     if (cls_id == 1){
-        //     // printf("cls_id %d\n",cls_id);}
-        //     map.at<cv::Vec3b>(i, j) = cv::Vec3b(
-        //         COLOR_MAP[cls_id][2], COLOR_MAP[cls_id][1], COLOR_MAP[cls_id][0]);
-        // }
-        // }
-        // }
-        // cv::imwrite("_cv_trt.jpg", map);
+        /*
+        std::vector<int> y_host(1*816*612);
+        int output_index = GetBindingIndex("output");
+        int sizeout = 816 * 612 *  sizeof(float);
+        CopyFromDeviceToHost(y_host,sizeout , output_index, stream);
+        */
+
+        // below is not work
+
+        /*
+        cudaStreamSynchronize(stream);
+        float* y_host = (float *)GetBindingPtr("output");
+
+        cv::Mat map = cv::Mat::zeros(612, 816, CV_8UC3);
+        for (size_t i = 0; i < 612; i++) {
+        for (size_t j = 0; j < 816; j++) {
+            int cls_id = y_host[i * 816 + j];
+           
+            if (cls_id == 1){
+                //  std::cout << "cls_id "<< cls_id << std::endl;
+            map.at<cv::Vec3b>(i, j) = cv::Vec3b(
+                COLOR_MAP[cls_id][2], COLOR_MAP[cls_id][1], COLOR_MAP[cls_id][0]);
+        }
+        }
+        }
+        cv::imwrite("_cv_trt.jpg", map);
+        */
+
+       
     }
 };

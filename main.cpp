@@ -42,10 +42,6 @@ int main(int argc, char const *argv[])
     //     std::cout << "CUDA_MODULE_LOADING is not set." << std::endl;  
     // } 
 
-    // std::string trtPath = "/home/myue/002_study/tools/NCNN/DeepLabV3_F16.trt";
-    // std::string imgpath = "/home/myue/002_study/tools/NCNN/test.jpg";
-
-
     std::string trtPath = "/media/myue/AHS/c_inference/my_trt/DeepLabV3_F16.trt"; // 需要绝对路经，
     std::string imgpath = "/media/myue/AHS/c_inference/my_trt/test.jpg";
     std::cout << trtPath << std::endl; 
@@ -65,6 +61,7 @@ int main(int argc, char const *argv[])
 
 
     // 预处理
+    //////////////////////////////////////////////////////////////////////////////////////////
     cv::Mat img = cv::imread(imgpath);
     cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
     cv::Mat img_resized;
@@ -72,18 +69,6 @@ int main(int argc, char const *argv[])
 
     float mean[] = {123.675, 116.28, 103.53};
     float std[] = {58.395, 57.12, 57.375};
-
-    // convert nhwc layout to nchw
-    // for (int h = 0; h < INPUT_H; h++)
-    // {
-    //     for (int w = 0; w < INPUT_W; w++)
-    //     {
-    //         cv::Vec3f &pixel = img_resized.at<cv::Vec3f>(h, w);  
-    //         pixel[0] = (pixel[0] - mean[0]) / std[0];  
-    //         pixel[1] = (pixel[1] - mean[1]) / std[1];  
-    //         pixel[2] = (pixel[2] - mean[2]) / std[2];  
-    //     }
-    // }
 
     // 提前申请内存，可节省推理时间
     static float mydata[BATCH_SIZE * CHANNEL * INPUT_H * INPUT_W];
@@ -99,18 +84,19 @@ int main(int argc, char const *argv[])
         }
     }
     std::cout << "图片已转换" << std::endl; 
-    std::cout << sizeof(float) << std::endl; //4 float32
-
-    int input_index = deeplab.GetBindingIndex("input");
-    //验证输入数据是否有正确的输入
-    // std::cout << mydata.size()*sizeof(float) << std::endl;
+    // std::cout << sizeof(float) << std::endl; //4 float32
+     //验证输入数据是否有正确的输入
     // for (int c = 0; c < BATCH_SIZE * CHANNEL * INPUT_H * INPUT_W; c++)
     //     {
     //         std::cout << mydata[c] << std::endl;
     //     }    
-    std::cout << "input_index" << input_index << std::endl; 
+    //////////////////////////////////////////////////////////////////////////////////////////
+    int input_index = deeplab.GetBindingIndex("input");
+   
     deeplab.inference(mydata,CHANNEL * INPUT_H * INPUT_W * sizeof(float),input_index);
-    // delete[] mydata;
+
+    // img img_resize 是否需要delect or free
+    // free(mydata);
 
     return 0;
 };
