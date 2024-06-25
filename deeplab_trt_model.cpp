@@ -196,6 +196,7 @@ public:
         auto start = std::chrono::high_resolution_clock::now();
         std::cout << "start to inference" << std::endl;
         context->enqueueV2(mBinding.data(), stream,nullptr);
+        cudaStreamSynchronize(stream); //then you can access output without copy again
         std::cout << "end of  inference" << std::endl;
         auto end1 = std::chrono::high_resolution_clock::now();
         auto ms1 = std::chrono::duration_cast<std::chrono::microseconds>(end1 - start);
